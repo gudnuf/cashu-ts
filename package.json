@@ -1,5 +1,5 @@
 {
-	"name": "@cashu/cashu-ts",
+	"name": "@gudnuf/cashu-ts",
 	"version": "2.3.0",
 	"description": "cashu library for communicating with a cashu mint",
 	"type": "module",
@@ -8,10 +8,10 @@
 	"types": "lib/types/index.d.ts",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/cashubtc/cashu-ts"
+		"url": "git+https://github.com/gudnuf/cashu-ts"
 	},
 	"bugs": {
-		"url": "https://github.com/cashubtc/cashu-ts/issues"
+		"url": "https://github.com/gudnuf/cashu-ts/issues"
 	},
 	"scripts": {
 		"compile": "vite build",
