@@ -120,14 +120,14 @@ export class WSConnection {
 		}
 
 		const delay = Math.min(
-			this.reconnectDelay * 2 ** this.reconnectAttempts,
+			this.reconnectDelay * Math.pow(2, this.reconnectAttempts),
 			this.maxReconnectDelay
 		);
 
 		this.reconnectTimeout = setTimeout(() => {
 			this.reconnectAttempts++;
 			console.log(
-				`WSConnection: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} to ${this.url}`
+				`cashu-ts WSConnection: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} to ${this.url}`
 			);
 			this.connect().catch((error) => {
 				console.error('WSConnection: Reconnection failed:', error);
@@ -140,21 +140,29 @@ export class WSConnection {
 		// Re-establish all stored subscriptions
 		for (const [originalSubId, subscription] of this.storedSubscriptions) {
 			try {
-				// Create new subscription with same parameters
-				const newSubId = this.createSubscription(
-					{ kind: subscription.params.kind, filters: subscription.params.filters },
-					subscription.callback,
-					subscription.errorCallback
+				// Send subscription request directly without storing it again
+				this.addRpcListener(
+					() => {
+						// Use the original subId to maintain client mapping
+						this.addSubListener(originalSubId, subscription.callback);
+					},
+					(e: JsonRpcErrorObject) => {
+						console.error('WSConnection: Failed to resubscribe:', e);
+						subscription.errorCallback(new Error(e.message));
+						// Remove failed subscription
+						this.storedSubscriptions.delete(originalSubId);
+					},
+					this.rpcId
 				);
 
-				// Update the mapping to use the new subId but keep the original for client reference
-				if (newSubId) {
-					// The client still references the original subId, so we maintain that mapping
-					// but internally track the new subId from the mint
-				}
+				// Send the subscription request with the original subId
+				this.sendRequest('subscribe', subscription.params);
+				this.rpcId++;
 			} catch (error) {
 				console.error('WSConnection: Failed to resubscribe:', error);
 				subscription.errorCallback(new Error('Failed to resubscribe after reconnection'));
+				// Remove failed subscription
+				this.storedSubscriptions.delete(originalSubId);
 			}
 		}
 	}
