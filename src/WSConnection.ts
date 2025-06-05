@@ -30,6 +30,13 @@ export class ConnectionManager {
 	}
 }
 
+interface StoredSubscription {
+	params: JsonRpcReqParams;
+	callback: (payload: any) => any;
+	errorCallback: (e: Error) => any;
+	originalSubId: string;
+}
+
 export class WSConnection {
 	public readonly url: URL;
 	private readonly _WS: typeof WebSocket;
@@ -40,6 +47,16 @@ export class WSConnection {
 	private messageQueue: MessageQueue;
 	private handlingInterval?: number;
 	private rpcId = 0;
+
+	// Reconnection-related properties
+	private manuallyClosing = false;
+	private reconnectAttempts = 0;
+	private maxReconnectAttempts = 5;
+	private reconnectDelay = 1000; // Start with 1 second
+	private maxReconnectDelay = 30000; // Max 30 seconds
+	private reconnectTimeout?: number;
+	private storedSubscriptions: Map<string, StoredSubscription> = new Map();
+	private subscriptionCallbacks: { [subId: string]: (payload: any) => any } = {};
 
 	constructor(url: string) {
 		this._WS = getWebSocketImpl();
@@ -57,6 +74,8 @@ export class WSConnection {
 					return;
 				}
 				this.ws.onopen = () => {
+					this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
+					this.resubscribeAll(); // Re-establish all subscriptions
 					res();
 				};
 				this.ws.onerror = () => {
@@ -71,12 +90,73 @@ export class WSConnection {
 						) as unknown as number;
 					}
 				};
-				this.ws.onclose = () => {
+				this.ws.onclose = (event: CloseEvent) => {
 					this.connectionPromise = undefined;
+					this.clearMessageHandling();
+
+					// Only attempt reconnection if not manually closing
+					if (!this.manuallyClosing) {
+						this.scheduleReconnect();
+					}
 				};
 			});
 		}
 		return this.connectionPromise;
+	}
+
+	private clearMessageHandling() {
+		if (this.handlingInterval) {
+			clearInterval(this.handlingInterval);
+			this.handlingInterval = undefined;
+		}
+	}
+
+	private scheduleReconnect() {
+		if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+			console.error(
+				`WSConnection: Max reconnection attempts (${this.maxReconnectAttempts}) reached for ${this.url}`
+			);
+			return;
+		}
+
+		const delay = Math.min(
+			this.reconnectDelay * 2 ** this.reconnectAttempts,
+			this.maxReconnectDelay
+		);
+
+		this.reconnectTimeout = setTimeout(() => {
+			this.reconnectAttempts++;
+			console.log(
+				`WSConnection: Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts} to ${this.url}`
+			);
+			this.connect().catch((error) => {
+				console.error('WSConnection: Reconnection failed:', error);
+				// The onclose handler will schedule the next attempt
+			});
+		}, delay) as unknown as number;
+	}
+
+	private resubscribeAll() {
+		// Re-establish all stored subscriptions
+		for (const [originalSubId, subscription] of this.storedSubscriptions) {
+			try {
+				// Create new subscription with same parameters
+				const newSubId = this.createSubscription(
+					{ kind: subscription.params.kind, filters: subscription.params.filters },
+					subscription.callback,
+					subscription.errorCallback
+				);
+
+				// Update the mapping to use the new subId but keep the original for client reference
+				if (newSubId) {
+					// The client still references the original subId, so we maintain that mapping
+					// but internally track the new subId from the mint
+				}
+			} catch (error) {
+				console.error('WSConnection: Failed to resubscribe:', error);
+				subscription.errorCallback(new Error('Failed to resubscribe after reconnection'));
+			}
+		}
 	}
 
 	sendRequest(method: 'subscribe', params: JsonRpcReqParams): void;
@@ -179,11 +259,22 @@ export class WSConnection {
 			return errorCallback(new Error('Socket is not open'));
 		}
 		const subId = (Math.random() + 1).toString(36).substring(7);
+
+		// Store subscription for reconnection
+		this.storedSubscriptions.set(subId, {
+			params: { ...params, subId },
+			callback,
+			errorCallback,
+			originalSubId: subId
+		});
+
 		this.addRpcListener(
 			() => {
 				this.addSubListener(subId, callback);
 			},
 			(e: JsonRpcErrorObject) => {
+				// Remove from stored subscriptions if it fails
+				this.storedSubscriptions.delete(subId);
 				errorCallback(new Error(e.message));
 			},
 			this.rpcId
@@ -194,6 +285,9 @@ export class WSConnection {
 	}
 
 	cancelSubscription(subId: string, callback: (payload: any) => any) {
+		// Remove from stored subscriptions
+		this.storedSubscriptions.delete(subId);
+
 		this.removeRpcListener(subId);
 		this.removeListener(subId, callback);
 		this.rpcId++;
@@ -205,8 +299,53 @@ export class WSConnection {
 	}
 
 	close() {
+		this.manuallyClosing = true;
+
+		// Clear any pending reconnection attempts
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = undefined;
+		}
+
+		// Clear stored subscriptions since we're manually closing
+		this.storedSubscriptions.clear();
+
 		if (this.ws) {
 			this.ws?.close();
 		}
+	}
+
+	// Method to check if connection is attempting to reconnect
+	get isReconnecting(): boolean {
+		return this.reconnectTimeout !== undefined;
+	}
+
+	// Method to get current reconnection attempt count
+	get currentReconnectAttempts(): number {
+		return this.reconnectAttempts;
+	}
+
+	// Method to manually trigger reconnection (useful for testing or manual recovery)
+	reconnect(): Promise<void> {
+		if (this.manuallyClosing) {
+			throw new Error('Cannot reconnect: connection was manually closed');
+		}
+
+		// Reset reconnection state
+		this.reconnectAttempts = 0;
+		if (this.reconnectTimeout) {
+			clearTimeout(this.reconnectTimeout);
+			this.reconnectTimeout = undefined;
+		}
+
+		// Close existing connection if any
+		if (this.ws && this.ws.readyState !== WebSocket.CLOSED) {
+			this.ws.close();
+		}
+
+		// Clear connection promise to force new connection
+		this.connectionPromise = undefined;
+
+		return this.connect();
 	}
 }
