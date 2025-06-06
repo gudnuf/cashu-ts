@@ -357,7 +357,7 @@ export class WSConnection {
 	 * Log message
 	 */
 	private log(kind: string, msg: string, data?: any) {
-		this.logger(kind, msg, data);
+		this.logger ? this.logger(kind, msg, data) : console.log(`[${kind}] ${msg}`, data);
 	}
 
 	/**
