@@ -40,6 +40,7 @@ export class WSConnection {
 	private messageQueue: MessageQueue;
 	private handlingInterval?: number;
 	private rpcId = 0;
+	private onCloseCallbacks: Array<(e: CloseEvent) => void> = [];
 
 	constructor(url: string) {
 		this._WS = getWebSocketImpl();
@@ -52,6 +53,7 @@ export class WSConnection {
 			this.connectionPromise = new Promise((res: OnOpenSuccess, rej: OnOpenError) => {
 				try {
 					this.ws = new this._WS(this.url.toString());
+					this.onCloseCallbacks = [];
 				} catch (err) {
 					rej(err);
 					return;
@@ -71,8 +73,9 @@ export class WSConnection {
 						) as unknown as number;
 					}
 				};
-				this.ws.onclose = () => {
+				this.ws.onclose = (e: CloseEvent) => {
 					this.connectionPromise = undefined;
+					this.onCloseCallbacks.forEach((cb) => cb(e));
 				};
 			});
 		}
@@ -211,5 +214,9 @@ export class WSConnection {
 		if (this.ws) {
 			this.ws?.close();
 		}
+	}
+
+	onClose(callback: (e: CloseEvent) => void) {
+		this.onCloseCallbacks.push(callback);
 	}
 }
