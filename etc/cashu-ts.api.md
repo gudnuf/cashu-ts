@@ -64,19 +64,21 @@ export class CashuAuthWallet {
 
 // @public
 export class CashuMint {
-    constructor(_mintUrl: string, _customRequest?: typeof request | undefined, authTokenGetter?: () => Promise<string>);
-    static check(mintUrl: string, checkPayload: CheckStatePayload, customRequest?: typeof request): Promise<CheckStateResponse>;
+    constructor(_mintUrl: string, _customRequest?: typeof request | undefined, blindAuthTokenGetter?: () => Promise<string>, clearAuthTokenGetter?: () => Promise<string>);
+    static check(mintUrl: string, checkPayload: CheckStatePayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<CheckStateResponse>;
     check(checkPayload: CheckStatePayload): Promise<CheckStateResponse>;
-    static checkMeltQuote(mintUrl: string, quote: string, customRequest?: typeof request, blindAuthToken?: string): Promise<PartialMeltQuoteResponse>;
+    static checkMeltQuote(mintUrl: string, quote: string, customRequest?: typeof request, headers?: Record<string, string>): Promise<PartialMeltQuoteResponse>;
     checkMeltQuote(quote: string): Promise<PartialMeltQuoteResponse>;
-    static checkMintQuote(mintUrl: string, quote: string, customRequest?: typeof request, blindAuthToken?: string): Promise<PartialMintQuoteResponse>;
+    static checkMintQuote(mintUrl: string, quote: string, customRequest?: typeof request, headers?: Record<string, string>): Promise<PartialMintQuoteResponse>;
     checkMintQuote(quote: string): Promise<PartialMintQuoteResponse>;
     connectWebSocket(): Promise<void>;
-    static createMeltQuote(mintUrl: string, meltQuotePayload: MeltQuotePayload, customRequest?: typeof request, blindAuthToken?: string): Promise<PartialMeltQuoteResponse>;
+    static createMeltQuote(mintUrl: string, meltQuotePayload: MeltQuotePayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<PartialMeltQuoteResponse>;
     createMeltQuote(meltQuotePayload: MeltQuotePayload): Promise<PartialMeltQuoteResponse>;
-    static createMintQuote(mintUrl: string, mintQuotePayload: MintQuotePayload, customRequest?: typeof request, blindAuthToken?: string): Promise<PartialMintQuoteResponse>;
+    static createMintQuote(mintUrl: string, mintQuotePayload: MintQuotePayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<PartialMintQuoteResponse>;
     createMintQuote(mintQuotePayload: MintQuotePayload): Promise<PartialMintQuoteResponse>;
     disconnectWebSocket(): void;
+    // (undocumented)
+    getAuthHeaders(path: string): Promise<Record<string, string>>;
     static getInfo(mintUrl: string, customRequest?: typeof request): Promise<GetInfoResponse>;
     getInfo(): Promise<GetInfoResponse>;
     static getKeys(mintUrl: string, keysetId?: string, customRequest?: typeof request): Promise<MintActiveKeys>;
@@ -87,11 +89,9 @@ export class CashuMint {
     //
     // (undocumented)
     getLazyMintInfo(): Promise<MintInfo>;
-    // (undocumented)
-    handleBlindAuth(path: string): Promise<string | undefined>;
-    static melt(mintUrl: string, meltPayload: MeltPayload, customRequest?: typeof request, blindAuthToken?: string): Promise<PartialMeltQuoteResponse>;
+    static melt(mintUrl: string, meltPayload: MeltPayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<PartialMeltQuoteResponse>;
     melt(meltPayload: MeltPayload): Promise<PartialMeltQuoteResponse>;
-    static mint(mintUrl: string, mintPayload: MintPayload, customRequest?: typeof request, blindAuthToken?: string): Promise<MintResponse>;
+    static mint(mintUrl: string, mintPayload: MintPayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<MintResponse>;
     mint(mintPayload: MintPayload): Promise<MintResponse>;
     // (undocumented)
     get mintUrl(): string;
@@ -101,7 +101,7 @@ export class CashuMint {
     restore(restorePayload: {
         outputs: Array<SerializedBlindedMessage>;
     }): Promise<PostRestoreResponse>;
-    static swap(mintUrl: string, swapPayload: SwapPayload, customRequest?: typeof request, blindAuthToken?: string): Promise<SwapResponse>;
+    static swap(mintUrl: string, swapPayload: SwapPayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<SwapResponse>;
     swap(swapPayload: SwapPayload): Promise<SwapResponse>;
     // Warning: (ae-forgotten-export) The symbol "WSConnection" needs to be exported by the entry point index.d.ts
     //
@@ -286,6 +286,14 @@ export type GetInfoResponse = {
         };
         '20'?: {
             supported: boolean;
+        };
+        '21'?: {
+            openid_discovery: string;
+            client_id: string;
+            protected_endpoints: Array<{
+                method: 'GET' | 'POST';
+                path: string;
+            }>;
         };
         '22'?: {
             bat_max_mint: number;
