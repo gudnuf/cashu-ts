@@ -176,7 +176,7 @@ declare class CashuMint {
      * @returns redeemed and unredeemed ordered list of booleans
      */
     check(checkPayload: CheckStatePayload): Promise<CheckStateResponse>;
-    static restore(mintUrl: string, restorePayload: PostRestorePayload, customRequest?: typeof request): Promise<PostRestoreResponse>;
+    static restore(mintUrl: string, restorePayload: PostRestorePayload, customRequest?: typeof request, headers?: Record<string, string>): Promise<PostRestoreResponse>;
     restore(restorePayload: {
         outputs: Array<SerializedBlindedMessage>;
     }): Promise<PostRestoreResponse>;
