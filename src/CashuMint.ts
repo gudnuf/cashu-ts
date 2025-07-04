@@ -483,13 +483,15 @@ class CashuMint {
 	public static async restore(
 		mintUrl: string,
 		restorePayload: PostRestorePayload,
-		customRequest?: typeof request
+		customRequest?: typeof request,
+		headers?: Record<string, string>
 	): Promise<PostRestoreResponse> {
 		const requestInstance = customRequest || request;
 		const data = await requestInstance<PostRestoreResponse>({
 			endpoint: joinUrls(mintUrl, '/v1/restore'),
 			method: 'POST',
-			requestBody: restorePayload
+			requestBody: restorePayload,
+			headers: headers || {}
 		});
 
 		if (!isObj(data) || !Array.isArray(data?.outputs) || !Array.isArray(data?.signatures)) {
@@ -502,7 +504,8 @@ class CashuMint {
 	async restore(restorePayload: {
 		outputs: Array<SerializedBlindedMessage>;
 	}): Promise<PostRestoreResponse> {
-		return CashuMint.restore(this._mintUrl, restorePayload, this._customRequest);
+		const headers = await this.getAuthHeaders('/v1/restore');
+		return CashuMint.restore(this._mintUrl, restorePayload, this._customRequest, headers);
 	}
 
 	/**
