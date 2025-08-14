@@ -167,6 +167,12 @@ export type MeltQuoteResponse = PartialMeltQuoteResponse & { request: string; un
  */
 export type Bolt12MeltQuoteResponse = MeltQuoteResponse;
 
+/**
+ * Response from the mint after requesting an on-chain melt quote. Contains payment details and state
+ * for sending Bitcoin to on-chain addresses.
+ */
+export type OnchainMeltQuoteResponse = MeltQuoteResponse;
+
 export const MeltQuoteState = {
 	UNPAID: 'UNPAID',
 	PENDING: 'PENDING',
@@ -262,6 +268,54 @@ export type Bolt12MintQuoteResponse = {
 	 * The amount of ecash that has been issued for the given mint quote.
 	 */
 	amount_issued: number;
+};
+
+/**
+ * Response from the mint after requesting an on-chain mint quote. Contains a Bitcoin address
+ * and tracks payment/issuance amounts for on-chain Bitcoin transactions.
+ */
+export type OnchainMintQuoteResponse = {
+	/**
+	 * Quote identifier.
+	 */
+	quote: string;
+	/**
+	 * Bitcoin address that can be paid to mint tokens.
+	 */
+	request: string;
+	/**
+	 * Requested amount. This is null for on-chain quotes as amount is determined by payment.
+	 */
+	amount: number | null;
+	/**
+	 * Unit of the amount (e.g., 'sat' for satoshis).
+	 */
+	unit: string;
+	/**
+	 * Unix timestamp when quote expires.
+	 */
+	expiry: number | null;
+	/**
+	 * Public key that locked this quote.
+	 */
+	pubkey: string;
+	/**
+	 * The amount that has been paid to the mint via the Bitcoin address. The difference between this and
+	 * `amount_issued` can be minted.
+	 */
+	amount_paid: number;
+	/**
+	 * The amount of ecash that has been issued for the given mint quote.
+	 */
+	amount_issued: number;
+	/**
+	 * The amount of Bitcoin that has been received but not yet confirmed on-chain.
+	 */
+	amount_unconfirmed: number;
+	/**
+	 * The next block height at which confirmations will be checked. Null if no confirmations are pending.
+	 */
+	next_confirmation_height: number | null;
 };
 
 /**

@@ -43,6 +43,25 @@ export type MeltQuotePayload = {
 export type Bolt12MeltQuotePayload = MeltQuotePayload;
 
 /**
+ * Payload that needs to be sent to the mint to request an on-chain melt quote.
+ * Used for sending Bitcoin to on-chain addresses.
+ */
+export type OnchainMeltQuotePayload = {
+	/**
+	 * Bitcoin address to send to (destination address).
+	 */
+	request: string;
+	/**
+	 * Unit to be melted (e.g., 'sat' for satoshis).
+	 */
+	unit: string;
+	/**
+	 * Amount in satoshis to send to the Bitcoin address.
+	 */
+	amount: number;
+};
+
+/**
  * Melt quote specific options.
  */
 export type MeltQuoteOptions = {
@@ -113,6 +132,20 @@ export type Bolt12MintQuotePayload = Omit<MintQuotePayload, 'amount'> & {
 	amount?: number;
 	/**
 	 * Public key required to lock the quote.
+	 */
+	pubkey: string;
+};
+
+/**
+ * Payload for requesting an on-chain mint quote. Used for minting tokens via Bitcoin on-chain payments.
+ */
+export type OnchainMintQuotePayload = {
+	/**
+	 * Unit to be minted (e.g., 'sat' for satoshis).
+	 */
+	unit: string;
+	/**
+	 * Public key to lock the quote to. Required for on-chain quotes.
 	 */
 	pubkey: string;
 };

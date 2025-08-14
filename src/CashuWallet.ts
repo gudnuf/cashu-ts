@@ -35,6 +35,10 @@ import type {
 	Bolt12MintQuotePayload,
 	Bolt12MintQuoteResponse,
 	Bolt12MeltQuoteResponse,
+	OnchainMintQuotePayload,
+	OnchainMintQuoteResponse,
+	OnchainMeltQuotePayload,
+	OnchainMeltQuoteResponse,
 } from './model/types/index';
 import { MintQuoteState, MeltQuoteState } from './model/types/index';
 import { type SubscriptionCanceller } from './model/types/wallet/websocket';
@@ -1033,6 +1037,22 @@ class CashuWallet {
 	}
 
 	/**
+	 * Requests a mint quote from the mint. Response returns a Bitcoin address for the
+	 * requested given amount and unit for on-chain payments.
+	 *
+	 * @param pubkey Public key to lock the quote to.
+	 * @returns The mint will return a mint quote with a Bitcoin address for minting tokens of the
+	 *   specified amount and unit via on-chain Bitcoin payments.
+	 */
+	async createMintQuoteOnchain(pubkey: string): Promise<OnchainMintQuoteResponse> {
+		const mintQuotePayload: OnchainMintQuotePayload = {
+			unit: this._unit,
+			pubkey: pubkey,
+		};
+		return this.mint.createMintQuoteOnchain(mintQuotePayload);
+	}
+
+	/**
 	 * Gets an existing mint quote from the mint.
 	 *
 	 * @param quote Quote ID.
@@ -1059,6 +1079,16 @@ class CashuWallet {
 	 */
 	async checkMintQuoteBolt12(quote: string): Promise<Bolt12MintQuoteResponse> {
 		return this.mint.checkMintQuoteBolt12(quote);
+	}
+
+	/**
+	 * Gets an existing on-chain mint quote from the mint.
+	 *
+	 * @param quote Quote ID.
+	 * @returns The latest on-chain mint quote for the given quote ID.
+	 */
+	async checkMintQuoteOnchain(quote: string): Promise<OnchainMintQuoteResponse> {
+		return this.mint.checkMintQuoteOnchain(quote);
 	}
 
 	/**
@@ -1107,6 +1137,26 @@ class CashuWallet {
 	}
 
 	/**
+	 * Mint proofs for a given on-chain mint quote.
+	 *
+	 * @param amount Amount to request. This must be less than or equal to the `quote.amountPaid -
+	 *   quote.amountIssued`
+	 * @param {OnchainMintQuoteResponse} quote - On-chain mint quote response containing the quote details.
+	 * @param {string} privateKey - Private key to unlock the quote.
+	 * @param {MintProofOptions} [options] - Optional parameters for configuring the Mint Proof
+	 *   operation.
+	 * @returns Proofs.
+	 */
+	async mintProofsOnchain(
+		amount: number,
+		quote: OnchainMintQuoteResponse,
+		privateKey: string,
+		options?: MintProofOptions,
+	): Promise<Proof[]> {
+		return this._mintProofs('onchain', amount, quote, { ...options, privateKey });
+	}
+
+	/**
 	 * Requests a melt quote from the mint. Response returns amount and fees for a given unit in order
 	 * to pay a Lightning invoice.
 	 *
@@ -1152,6 +1202,24 @@ class CashuWallet {
 					}
 				: undefined,
 		});
+	}
+
+	/**
+	 * Requests a melt quote from the mint. Response returns amount and fees for a given unit in order
+	 * to pay to an on-chain Bitcoin address.
+	 *
+	 * @param address Bitcoin address that needs to get a fee estimate.
+	 * @param amount Amount in satoshis to send to the Bitcoin address.
+	 * @returns The mint will create and return a melt quote for the on-chain payment with an amount and fee
+	 *   reserve.
+	 */
+	async createMeltQuoteOnchain(address: string, amount: number): Promise<OnchainMeltQuoteResponse> {
+		const meltQuotePayload: OnchainMeltQuotePayload = {
+			unit: this._unit,
+			request: address,
+			amount: amount,
+		};
+		return this.mint.createMeltQuoteOnchain(meltQuotePayload);
 	}
 
 	/**
@@ -1212,6 +1280,16 @@ class CashuWallet {
 	}
 
 	/**
+	 * Return an existing on-chain melt quote from the mint.
+	 *
+	 * @param quote ID of the on-chain melt quote.
+	 * @returns The mint will return an existing on-chain melt quote.
+	 */
+	async checkMeltQuoteOnchain(quote: string): Promise<OnchainMeltQuoteResponse> {
+		return this.mint.checkMeltQuoteOnchain(quote);
+	}
+
+	/**
 	 * Melt proofs for a melt quote. proofsToSend must be at least amount+fee_reserve form the melt
 	 * quote. This function does not perform coin selection!. Returns melt quote and change proofs.
 	 *
@@ -1248,6 +1326,27 @@ class CashuWallet {
 		change: Proof[];
 	}> {
 		return this._meltProofs('bolt12', meltQuote, proofsToSend, options);
+	}
+
+	/**
+	 * Melt proofs for an on-chain melt quote. proofsToSend must be at least amount+fee_reserve from the melt
+	 * quote. This function does not perform coin selection!. Returns melt quote and change proofs.
+	 *
+	 * @param meltQuote On-chain melt quote response containing the quote details.
+	 * @param proofsToSend Proofs to melt for the on-chain payment.
+	 * @param {MeltProofOptions} [options] - Optional parameters for configuring the Melting Proof
+	 *   operation.
+	 * @returns Object containing the updated melt quote and any change proofs.
+	 */
+	async meltProofsOnchain(
+		meltQuote: OnchainMeltQuoteResponse,
+		proofsToSend: Proof[],
+		options?: MeltProofOptions,
+	): Promise<{
+		quote: OnchainMeltQuoteResponse;
+		change: Proof[];
+	}> {
+		return this._meltProofs('onchain', meltQuote, proofsToSend, options);
 	}
 
 	/**
@@ -1644,10 +1743,16 @@ class CashuWallet {
 	 * @param options Optional parameters for configuring the Mint Proof operation.
 	 * @returns Proofs.
 	 */
-	private async _mintProofs<T extends 'bolt11' | 'bolt12'>(
+	private async _mintProofs<T extends 'bolt11' | 'bolt12' | 'onchain'>(
 		method: T,
 		amount: number,
-		quote: string | (T extends 'bolt11' ? MintQuoteResponse : Bolt12MintQuoteResponse),
+		quote:
+			| string
+			| (T extends 'bolt11'
+					? MintQuoteResponse
+					: T extends 'bolt12'
+						? Bolt12MintQuoteResponse
+						: OnchainMintQuoteResponse),
 		options?: MintProofOptions & { privateKey?: string },
 	): Promise<Proof[]> {
 		let { outputAmounts } = options || {};
@@ -1707,6 +1812,10 @@ class CashuWallet {
 			const { signatures } = await this.mint.mintBolt12(mintPayload);
 			return newBlindingData.map((d, i) => d.toProof(signatures[i], keyset));
 		}
+		if (method === 'onchain') {
+			const { signatures } = await this.mint.mintOnchain(mintPayload);
+			return newBlindingData.map((d, i) => d.toProof(signatures[i], keyset));
+		}
 		const { signatures } = await this.mint.mint(mintPayload);
 		return newBlindingData.map((d, i) => d.toProof(signatures[i], keyset));
 	}
@@ -1720,9 +1829,9 @@ class CashuWallet {
 	 * @param options Optional parameters for configuring the Melting Proof operation.
 	 * @returns Melt quote and change proofs.
 	 */
-	private async _meltProofs<T extends 'bolt11' | 'bolt12'>(
+	private async _meltProofs<T extends 'bolt11' | 'bolt12' | 'onchain'>(
 		method: T,
-		meltQuote: T extends 'bolt11' ? MeltQuoteResponse : Bolt12MeltQuoteResponse,
+		meltQuote: T extends 'bolt11' ? MeltQuoteResponse : T extends 'bolt12' ? Bolt12MeltQuoteResponse : OnchainMeltQuoteResponse,
 		proofsToSend: Proof[],
 		options?: MeltProofOptions,
 	): Promise<MeltProofsResponse> {
@@ -1754,6 +1863,13 @@ class CashuWallet {
 		};
 		if (method === 'bolt12') {
 			const meltResponse = await this.mint.meltBolt12(meltPayload);
+			return {
+				quote: { ...meltResponse, unit: meltQuote.unit, request: meltQuote.request },
+				change: meltResponse.change?.map((s, i) => outputData[i].toProof(s, keys)) ?? [],
+			};
+		}
+		if (method === 'onchain') {
+			const meltResponse = await this.mint.meltOnchain(meltPayload);
 			return {
 				quote: { ...meltResponse, unit: meltQuote.unit, request: meltQuote.request },
 				change: meltResponse.change?.map((s, i) => outputData[i].toProof(s, keys)) ?? [],
